@@ -24,27 +24,27 @@ async function extractTotalStart(blob) {
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
 
-  const { data:{ words } } = await worker.recognize(blob);
+  // text を含めて受け取る
+  const { data:{ text, words } } = await worker.recognize(blob);
   await worker.terminate();
 
-  // 画像の高さ（words[0].pageHeight に入っている）
+  // ***** デバッグ ***** ここで全文を表示
+  console.log('<<< OCR RAW TEXT >>>\n' + text);
+
+  // 画像の高さ
   const pageH = words.length ? words[0].pageHeight : 1;
 
-  // 上 15 % にある 2〜4 桁数字を候補に
+  // 上 50 % にある 2〜4 桁数字を候補に
   const candidates = words
-    .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))      // 数字だけ
-    .filter(w => (w.bbox.y0 / pageH) < 0.50)            // 上端 50 %
+    .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))
+    .filter(w => (w.bbox.y0 / pageH) < 0.50)
     .map(w => parseInt(
-        w.text.replace(/[０-９]/g,
-          ch => String.fromCharCode(ch.charCodeAt(0) - 65248)
-        ), 10));
+      w.text.replace(/[０-９]/g,
+        ch => String.fromCharCode(ch.charCodeAt(0) - 65248)), 10));
 
-  if (!candidates.length) {
-    throw new Error('総スタートが読み取れませんでした');
-  }
+  if (!candidates.length) throw new Error('総スタートが読み取れませんでした');
 
-  // 一番大きいものを採用（例: 2375 > 529 > 21 …）
-  return candidates.sort((a, b) => b - a)[0];
+  return candidates.sort((a, b) => b - a)[0];   // 最大値
 }
 
 /* ---------- メイン ---------- */
