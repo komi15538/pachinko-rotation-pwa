@@ -1,26 +1,8 @@
-// TODO: 画像解析ロジックを追加
-// app.js --- Step 1: 画像プレビューまで
+// app.js ── OCR で総スタート抽出まで
 
 document.getElementById('files').addEventListener('change', handleFiles);
 
-function handleFiles(evt) {
-  const fileList = evt.target.files;
-  if (!fileList.length) return;
-
-  // 画面をリセット
-  document.getElementById('out').textContent = '';
-  const preview = document.querySelector('#preview') || createPreview();
-
-  // 最初の画像だけ表示（複数対応は後で）
-  const imgFile = fileList[0];
-  const reader  = new FileReader();
-  reader.onload = () => {
-    preview.src = reader.result;
-  };
-  reader.readAsDataURL(imgFile);
-}
-
-// helper: img 要素が無ければ作る
+/* ---------- プレビュー ---------- */
 function createPreview() {
   const img = document.createElement('img');
   img.id = 'preview';
@@ -28,63 +10,49 @@ function createPreview() {
   document.body.appendChild(img);
   return img;
 }
-/* ---------- ① OCR して総スタートを拾う ---------- */
+function showPreview(file) {
+  const img = document.querySelector('#preview') || createPreview();
+  const rdr = new FileReader();
+  rdr.onload = () => (img.src = rdr.result);
+  rdr.readAsDataURL(file);
+}
+
+/* ---------- OCR ---------- */
 async function extractTotalStart(file) {
-
-  // ① ワーカー生成（logger は渡さない）
   const worker = await Tesseract.createWorker();
-
-  // ② 言語ロード & 初期化
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
 
-  // ③ 画像を認識（ここで logger を渡す）
   const { data:{ text } } = await worker.recognize(file, {
     logger: m => console.log(m)
   });
+  await worker.terminate();
 
-  await worker.terminate();   // メモリ解放
-
-  // ---- 正規表現で「総スタート xxx」だけ取り出す ----
-  const m = text.replace(/[，,]/g,'')      // カンマ除去
+  const m = text.replace(/[，,]/g,'')
                 .match(/総スタート\s*([0-9０-９]+)/);
   if (!m) throw new Error('総スタートが読み取れませんでした');
 
-  // 全角→半角変換して数値化
   const digits = m[1].replace(/[０-９]/g,
-      ch => String.fromCharCode(ch.charCodeAt(0)-65248));
+    ch => String.fromCharCode(ch.charCodeAt(0)-65248));
   return parseInt(digits,10);
 }
 
-  // ① プレビューはグラフだけ
-  showPreview(graphImg);
+/* ---------- メイン ---------- */
+async function handleFiles(e) {
+  const [graphImg, tableImg] = e.target.files;
+  if (!tableImg) {
+    alert('グラフとテーブル、2枚選択してください');
+    return;
+  }
 
-  // ② OCR → 総スタート数
+  showPreview(graphImg);
+  document.getElementById('out').textContent = 'OCR 読み取り中…';
+
   try {
-    document.getElementById('out').textContent = 'OCR 読み取り中…';
-    const totalStart = await extractTotalStart(tableImg);
+    const total = await extractTotalStart(tableImg);
     document.getElementById('out').textContent =
-      `総スタート：${totalStart.toLocaleString()} 回`;
-  } catch (e) {
-    document.getElementById('out').textContent = e.message;
+      `総スタート：${total.toLocaleString()} 回`;
+  } catch (err) {
+    document.getElementById('out').textContent = err.message;
   }
 }
-function showPreview(file){
-  const preview = document.querySelector('#preview') || createPreview();
-  const reader = new FileReader();
-  reader.onload = () => (preview.src = reader.result);
-  reader.readAsDataURL(file);
-}
-/* ===== OCR 単体テスト (あとで削除OK) ===== */
-(async () => {
-  const worker = await Tesseract.createWorker();
-  await worker.loadLanguage('jpn');
-  await worker.initialize('jpn');
-
-  const { data:{ text } } = await worker.recognize('table.png', {
-    logger: m => console.log(m)
-  });
-
-  console.log('----- OCR RESULT -----\n' + text);
-  await worker.terminate();
-})();
