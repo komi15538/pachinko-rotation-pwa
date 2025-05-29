@@ -48,7 +48,7 @@ async function extractTotalStart (blob) {
 
   /* ---- 上 45 % かつ 100〜5000 ---- */
   const candidates = allNums
-    .filter(o => o.yRate < 0.45)
+    .filter(o <= o.yRate < 0.50)
     .filter(o => o.num >= 100 && o.num <= 5000);
 
   console.log('CANDIDATES (<=45 %):', candidates);
