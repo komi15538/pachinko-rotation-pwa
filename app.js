@@ -50,8 +50,8 @@ async function handleFiles (e) {
     // ① File → HTMLImageElement へ
     const imgBitmap = await createImageBitmap(imgFile);
 
-    // ② “総スタート” 領域だけトリミング（上 35% 程度）
-    const cropH = Math.round(imgBitmap.height * 0.35);
+    // ② “総スタート” 領域だけトリミング（上 55% 程度）
+    const cropH = Math.round(imgBitmap.height * 0.55);
     const canvas = new OffscreenCanvas(imgBitmap.width, cropH);
     const ctx = canvas.getContext('2d');
     ctx.drawImage(imgBitmap, 0, 0, imgBitmap.width, cropH, 0, 0,
