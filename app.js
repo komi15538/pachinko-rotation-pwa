@@ -19,21 +19,27 @@ function showPreview(file) {
 
 /* ---------- OCR ---------- */
 async function extractTotalStart(file) {
-  const worker = await Tesseract.createWorker();
+  // ① ロガーはここで渡す（clone されない）
+  const worker = await Tesseract.createWorker({
+    logger: m => console.log(m)
+  });
+
+  // ② 言語ロード & 初期化（load() は不要）
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
 
-  const { data:{ text } } = await worker.recognize(file, {
-    logger: m => console.log(m)
-  });
+  // ③ 画像を認識（options には clone 可能データだけ）
+  const { data:{ text } } = await worker.recognize(file);
+
   await worker.terminate();
 
+  // ---- 総スタート抽出 ----
   const m = text.replace(/[，,]/g,'')
                 .match(/総スタート\s*([0-9０-９]+)/);
   if (!m) throw new Error('総スタートが読み取れませんでした');
 
   const digits = m[1].replace(/[０-９]/g,
-    ch => String.fromCharCode(ch.charCodeAt(0)-65248));
+      ch => String.fromCharCode(ch.charCodeAt(0)-65248));
   return parseInt(digits,10);
 }
 
