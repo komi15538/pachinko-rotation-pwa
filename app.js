@@ -38,20 +38,35 @@ async function extractTotalStart(file) {
 }
 
 /* ---------- メイン ---------- */
-async function handleFiles(e) {
-  const [graphImg, tableImg] = e.target.files;
-  if (!tableImg) {
-    alert('グラフとテーブル、2枚選択してください');
-    return;
-  }
+async function handleFiles (e) {
+  const [imgFile] = e.target.files;
+  if (!imgFile) return;
 
-  showPreview(graphImg);
+  showPreview(imgFile);                 // プレビューはそのまま
+
   document.getElementById('out').textContent = 'OCR 読み取り中…';
 
   try {
-    const total = await extractTotalStart(tableImg);
+    // ① File → HTMLImageElement へ
+    const imgBitmap = await createImageBitmap(imgFile);
+
+    // ② “総スタート” 領域だけトリミング（上 35% 程度）
+    const cropH = Math.round(imgBitmap.height * 0.35);
+    const canvas = new OffscreenCanvas(imgBitmap.width, cropH);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(imgBitmap, 0, 0, imgBitmap.width, cropH, 0, 0,
+                  imgBitmap.width, cropH);
+
+    // ③ canvas を blob → OCR
+    const dashBlob = await canvas.convertToBlob();
+    const total = await extractTotalStart(dashBlob);
+
     document.getElementById('out').textContent =
       `総スタート：${total.toLocaleString()} 回`;
+
+    // ★ ここで imgBitmap 全体を使って OpenCV で赤線最深値を取る
+    //    （まだ実装していなければ後で追加）
+
   } catch (err) {
     document.getElementById('out').textContent = err.message;
   }
