@@ -25,6 +25,7 @@ async function extractTotalStart(file) {
   });
 
   // ② 言語ロード & 初期化（load() は不要）
+  await worker.load();
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
 
