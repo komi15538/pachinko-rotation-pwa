@@ -1,4 +1,4 @@
-// app.js ── OCR で総スタート抽出まで
+// app.js ── 総スタート抽出（画像 1 枚・上 45 % に限定）
 
 document.getElementById('files').addEventListener('change', handleFiles);
 
@@ -11,72 +11,77 @@ function createPreview() {
   return img;
 }
 function showPreview(file) {
-  const img = document.querySelector('#preview') || createPreview();
-  const rdr = new FileReader();
+  const img  = document.querySelector('#preview') || createPreview();
+  const rdr  = new FileReader();
   rdr.onload = () => (img.src = rdr.result);
   rdr.readAsDataURL(file);
 }
 
-/* ---------- OCR ---------- */
+/* ---------- OCR & 総スタート抽出 ---------- */
 async function extractTotalStart(blob) {
   const worker = await Tesseract.createWorker();
   await worker.load();
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
 
-  const { data:{ text } } = await worker.recognize(blob);
+  // ─ OCR 実行 ─
+  const { data:{ text, words } } = await worker.recognize(blob);
   await worker.terminate();
 
-  console.log('<<< OCR RAW TEXT >>>\n' + text);   // デバッグ用
+  // ─ デバッグ表示 ─
+  console.log('<<< OCR RAW TEXT >>>\n' + text);
 
-  // 全角→半角、カンマ除去
-  const cleaned = text
-      .replace(/[０-９]/g, ch =>
-          String.fromCharCode(ch.charCodeAt(0) - 65248))
-      .replace(/[，,]/g, '');
+  // 画像高さ（bbox に入っている）
+  const pageH = words.length ? words[0].pageHeight : 1;
 
-  // 2〜4 桁の数字を全部抜く
-  const nums = cleaned.match(/\d{3,4}/g) || [];
+  // ─ 候補抽出 ─
+  const candidates = words
+    .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))        // 数字 2～4 桁
+    .map(w => ({
+      num   : parseInt(
+                w.text.replace(/[０-９]/g,
+                  ch => String.fromCharCode(ch.charCodeAt(0)-65248)), 10),
+      yRate : w.bbox.y0 / pageH                            // 上端の割合
+    }))
+    .filter(o => o.yRate < 0.45)   // ★ 上 45 % に限定
+    .filter(o => o.num >= 100 && o.num <= 5000);           // 100～5000 のみ
 
-  // 100〜4000 の範囲にある最大値を採用
-  const total = nums
-      .map(n => parseInt(n, 10))
-      .filter(n => n >= 100 && n <= 4000)
-      .sort((a, b) => b - a)[0];
+  console.log('CANDIDATES (<=45 %):', candidates);
 
-  if (!total) throw new Error('総スタートが読み取れませんでした');
-  return total;
+  if (!candidates.length)
+    throw new Error('総スタートが読み取れませんでした');
+
+  // 最大値を採用（例 2375 > 529 > 21 …）
+  return candidates.sort((a,b) => b.num - a.num)[0].num;
 }
 
 /* ---------- メイン ---------- */
-async function handleFiles (e) {
+async function handleFiles(e) {
   const [imgFile] = e.target.files;
   if (!imgFile) return;
 
-  showPreview(imgFile);                 // プレビューはそのまま
-
+  showPreview(imgFile);
   document.getElementById('out').textContent = 'OCR 読み取り中…';
 
   try {
-    // ① File → HTMLImageElement へ
-    const imgBitmap = await createImageBitmap(imgFile);
+    // 1) Bitmap 化
+    const bmp = await createImageBitmap(imgFile);
 
-    // ② “総スタート” 領域だけトリミング（上 55% 程度）
-    const cropH = Math.round(imgBitmap.height * 0.55);
-    const canvas = new OffscreenCanvas(imgBitmap.width, cropH);
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(imgBitmap, 0, 0, imgBitmap.width, cropH, 0, 0,
-                  imgBitmap.width, cropH);
+    // 2) 上 45 % をトリミング
+    const cropH = Math.round(bmp.height * 0.45);
+    const cvs   = new OffscreenCanvas(bmp.width, cropH);
+    cvs.getContext('2d')
+        .drawImage(bmp, 0, 0, bmp.width, cropH, 0, 0, bmp.width, cropH);
 
-    // ③ canvas を blob → OCR
-    const dashBlob = await canvas.convertToBlob();
-    const total = await extractTotalStart(dashBlob);
+    // 3) OCR → 総スタート
+    const totalStart = await extractTotalStart(await cvs.convertToBlob());
 
     document.getElementById('out').textContent =
-      `総スタート：${total.toLocaleString()} 回`;
+      `総スタート：${totalStart.toLocaleString()} 回`;
 
-    // ★ ここで imgBitmap 全体を使って OpenCV で赤線最深値を取る
-    //    （まだ実装していなければ後で追加）
+    /* ★ ここで bmp を OpenCV.js に渡して
+         赤線の最深 y 座標を取得し、
+         回転率 = totalStart ÷ (投資玉数/250) を表示する処理を追加予定 */
 
   } catch (err) {
     document.getElementById('out').textContent = err.message;
