@@ -30,35 +30,31 @@ function createPreview() {
 }
 /* ---------- ① OCR して総スタートを拾う ---------- */
 async function extractTotalStart(file) {
-  // Tesseract.js ワーカー（初回は 3〜5 MB 読み込みで少し待ちます）
-  const worker = Tesseract.createWorker({
-    logger: m => console.log(m)   // 進捗をコンソールに表示
-  });
-  await worker.load();
-  await worker.loadLanguage('jpn');   // 日本語＋数字
+
+  // ① ワーカー生成（logger は渡さない）
+  const worker = await Tesseract.createWorker();
+
+  // ② 言語ロード & 初期化
+  await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
-  await worker.setParameters({
-    tessedit_char_whitelist: '0123456789総スタート ',
-    preserve_interword_spaces: '1'
+
+  // ③ 画像を認識（ここで logger を渡す）
+  const { data:{ text } } = await worker.recognize(file, {
+    logger: m => console.log(m)
   });
 
-  const { data:{ text } } = await worker.recognize(file);
-
-  await worker.terminate();           // メモリ解放
+  await worker.terminate();   // メモリ解放
 
   // ---- 正規表現で「総スタート xxx」だけ取り出す ----
-  // 例：総スタート 2375
   const m = text.replace(/[，,]/g,'')      // カンマ除去
-                .match(/総スタート\s*([0-9]+)/);
-  if (m) return parseInt(m[1],10);
-  throw new Error('総スタートが読み取れませんでした');
+                .match(/総スタート\s*([0-9０-９]+)/);
+  if (!m) throw new Error('総スタートが読み取れませんでした');
+
+  // 全角→半角変換して数値化
+  const digits = m[1].replace(/[０-９]/g,
+      ch => String.fromCharCode(ch.charCodeAt(0)-65248));
+  return parseInt(digits,10);
 }
-async function handleFiles(evt) {
-  const [graphImg, tableImg] = evt.target.files;
-  if (!tableImg) {
-    alert('グラフとテーブル、2枚のスクショを選んでください');
-    return;
-  }
 
   // ① プレビューはグラフだけ
   showPreview(graphImg);
@@ -79,14 +75,16 @@ function showPreview(file){
   reader.onload = () => (preview.src = reader.result);
   reader.readAsDataURL(file);
 }
-// ★ このテストは動作確認が終わったら削除でOK
+/* ===== OCR 単体テスト (あとで削除OK) ===== */
 (async () => {
-  const worker = Tesseract.createWorker({ logger: m => console.log(m) });
-  await worker.load();
+  const worker = await Tesseract.createWorker();
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
-  // samples/table.png は 自分のスクショ(当たり履歴) でもOK
-  const { data:{ text } } = await worker.recognize('samples/table.png');
-  console.log('OCR RESULT:\n', text);
+
+  const { data:{ text } } = await worker.recognize('table.png', {
+    logger: m => console.log(m)
+  });
+
+  console.log('----- OCR RESULT -----\n' + text);
   await worker.terminate();
 })();
