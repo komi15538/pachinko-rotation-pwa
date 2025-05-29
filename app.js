@@ -29,32 +29,34 @@ async function extractTotalStart (blob) {
 
   console.log('<<< OCR RAW TEXT >>>\n' + text);
 
-  const pageH = words.length ? words[0].pageHeight : 1;
+  /* ---- ページ高さを words から算出 ---- */
+  const pageH = words.length
+      ? Math.max(...words.map(w => w.bbox?.y1 ?? 0))   // y1 の最大値
+      : 1;
 
-  /* ---- ① 数字と yRatio をすべて取得 ---- */
+  /* ---- 数字と yRate をすべて取得 ---- */
   const allNums = words
     .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))
     .map(w => ({
       num   : parseInt(
         w.text.replace(/[０-９]/g,
           ch => String.fromCharCode(ch.charCodeAt(0) - 65248)), 10),
-      yRate : w.bbox.y0 / pageH
+      yRate : (w.bbox?.y0 ?? 0) / pageH                // 0–1 の割合
     }));
 
-  console.table(allNums);                      // デバッグ表示
+  console.table(allNums);                              // デバッグ
 
-  /* ---- ② 上 45 % かつ 100〜5000 のみ ---- */
+  /* ---- 上 45 % かつ 100〜5000 ---- */
   const candidates = allNums
     .filter(o => o.yRate < 0.45)
     .filter(o => o.num >= 100 && o.num <= 5000);
 
   console.log('CANDIDATES (<=45 %):', candidates);
 
-  if (!candidates.length) {
+  if (!candidates.length)
     throw new Error('総スタートが読み取れませんでした');
-  }
 
-  return candidates.sort((a, b) => b.num - a.num)[0].num; // 最大値
+  return candidates.sort((a, b) => b.num - a.num)[0].num;
 }
 
 /* ---------- メイン ---------- */
@@ -78,9 +80,6 @@ async function handleFiles (e) {
 
     document.getElementById('out').textContent =
       `総スタート：${totalStart.toLocaleString()} 回`;
-
-    /* ★ このあと OpenCV.js で赤線最深値を取り、
-         回転率を計算して表示する予定 */
 
   } catch (err) {
     document.getElementById('out').textContent = err.message;
