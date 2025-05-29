@@ -43,6 +43,7 @@ async function extractTotalStart(blob) {
                   ch => String.fromCharCode(ch.charCodeAt(0)-65248)), 10),
       yRate : w.bbox.y0 / pageH                            // 上端の割合
     }))
+    console.table(allNums);               // ★← ここを追加
     .filter(o => o.yRate < 0.45)   // ★ 上 45 % に限定
     .filter(o => o.num >= 100 && o.num <= 5000);           // 100～5000 のみ
 
