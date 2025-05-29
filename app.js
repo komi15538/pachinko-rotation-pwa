@@ -24,6 +24,9 @@ async function extractTotalStart(file) {
 
   // ② 画像を認識（logger は一旦付けない）
   const { data:{ text } } = await worker.recognize(file);
+  
+  // ★ ここで全文を出力して確認
+  console.log('<<< OCR RAW TEXT >>>\n' + text);
 
   await worker.terminate();
 
