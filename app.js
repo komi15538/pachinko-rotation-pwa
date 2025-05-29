@@ -20,7 +20,7 @@ function showPreview(file) {
 /* ---------- OCR ---------- */
 async function extractTotalStart(file) {
   // ① ロガーはここで渡す（clone されない）
-  const worker = await Tesseract.createWorker({
+  const worker = Tesseract.createWorker({
     logger: m => console.log(m)
   });
 
