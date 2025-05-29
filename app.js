@@ -18,29 +18,33 @@ function showPreview(file) {
 }
 
 /* ---------- OCR ---------- */
-async function extractTotalStart (blob) {
+async function extractTotalStart(blob) {
   const worker = await Tesseract.createWorker();
   await worker.load();
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
 
-  const { data:{ text } } = await worker.recognize(blob);
+  const { data:{ words } } = await worker.recognize(blob);
   await worker.terminate();
 
-  console.log('<<< OCR RAW TEXT >>>\n' + text);   // デバッグ用
+  // 画像の高さ（words[0].pageHeight に入っている）
+  const pageH = words.length ? words[0].pageHeight : 1;
 
-  // ① 空白・カンマを除去
-  const s = text.replace(/\s/g, '').replace(/[，,]/g, '');
+  // 上 15 % にある 2〜4 桁数字を候補に
+  const candidates = words
+    .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))      // 数字だけ
+    .filter(w => (w.bbox.y0 / pageH) < 0.50)            // 上端 50 %
+    .map(w => parseInt(
+        w.text.replace(/[０-９]/g,
+          ch => String.fromCharCode(ch.charCodeAt(0) - 65248)
+        ), 10));
 
-  // ② 総スタート nnnn を拾う
-  const m = s.match(/総スタート([0-9０-９]+)/);
-  if (!m) throw new Error('総スタートが読み取れませんでした');
+  if (!candidates.length) {
+    throw new Error('総スタートが読み取れませんでした');
+  }
 
-  // ③ 全角数字を半角へ
-  const num = m[1].replace(/[０-９]/g,
-      ch => String.fromCharCode(ch.charCodeAt(0)-65248));
-
-  return parseInt(num, 10);
+  // 一番大きいものを採用（例: 2375 > 529 > 21 …）
+  return candidates.sort((a, b) => b - a)[0];
 }
 
 /* ---------- メイン ---------- */
