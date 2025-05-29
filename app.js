@@ -79,3 +79,14 @@ function showPreview(file){
   reader.onload = () => (preview.src = reader.result);
   reader.readAsDataURL(file);
 }
+// ★ このテストは動作確認が終わったら削除でOK
+(async () => {
+  const worker = Tesseract.createWorker({ logger: m => console.log(m) });
+  await worker.load();
+  await worker.loadLanguage('jpn');
+  await worker.initialize('jpn');
+  // samples/table.png は 自分のスクショ(当たり履歴) でもOK
+  const { data:{ text } } = await worker.recognize('samples/table.png');
+  console.log('OCR RESULT:\n', text);
+  await worker.terminate();
+})();
