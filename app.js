@@ -24,27 +24,28 @@ async function extractTotalStart(blob) {
   await worker.loadLanguage('jpn');
   await worker.initialize('jpn');
 
-  // text を含めて受け取る
-  const { data:{ text, words } } = await worker.recognize(blob);
+  const { data:{ text } } = await worker.recognize(blob);
   await worker.terminate();
 
-  // ***** デバッグ ***** ここで全文を表示
-  console.log('<<< OCR RAW TEXT >>>\n' + text);
+  console.log('<<< OCR RAW TEXT >>>\n' + text);   // デバッグ用
 
-  // 画像の高さ
-  const pageH = words.length ? words[0].pageHeight : 1;
+  // 全角→半角、カンマ除去
+  const cleaned = text
+      .replace(/[０-９]/g, ch =>
+          String.fromCharCode(ch.charCodeAt(0) - 65248))
+      .replace(/[，,]/g, '');
 
-  // 上 50 % にある 2〜4 桁数字を候補に
-  const candidates = words
-    .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))
-    .filter(w => (w.bbox.y0 / pageH) < 0.50)
-    .map(w => parseInt(
-      w.text.replace(/[０-９]/g,
-        ch => String.fromCharCode(ch.charCodeAt(0) - 65248)), 10));
+  // 2〜4 桁の数字を全部抜く
+  const nums = cleaned.match(/\d{3,4}/g) || [];
 
-  if (!candidates.length) throw new Error('総スタートが読み取れませんでした');
+  // 100〜4000 の範囲にある最大値を採用
+  const total = nums
+      .map(n => parseInt(n, 10))
+      .filter(n => n >= 100 && n <= 4000)
+      .sort((a, b) => b - a)[0];
 
-  return candidates.sort((a, b) => b - a)[0];   // 最大値
+  if (!total) throw new Error('総スタートが読み取れませんでした');
+  return total;
 }
 
 /* ---------- メイン ---------- */
