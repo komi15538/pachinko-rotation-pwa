@@ -1,8 +1,16 @@
-// app.js ── 総スタート抽出（画像 1 枚・上 45 % を OCR）
+// app.js ── 総スタート + 赤線ポリライン抽出 2025-05-XX
 
+/* --------------- ① OpenCV が初期化されるのを待つ --------------- */
+function cvReady () {
+  return new Promise(res => {
+    if (window.cv && cv.imread) return res();          // 既に OK
+    cv.onRuntimeInitialized = () => res();             // 読み込み後に実行
+  });
+}
+
+/* --------------- ② プレビュー --------------- */
 document.getElementById('files').addEventListener('change', handleFiles);
 
-/* ---------- プレビュー ---------- */
 function createPreview () {
   const img = document.createElement('img');
   img.id = 'preview';
@@ -17,7 +25,7 @@ function showPreview (file) {
   rdr.readAsDataURL(file);
 }
 
-/* ---------- OCR & 総スタート抽出 ---------- */
+/* --------------- ③ OCR：総スタートを読む --------------- */
 async function extractTotalStart (blob) {
   const worker = await Tesseract.createWorker();
   await worker.load();
@@ -31,75 +39,41 @@ async function extractTotalStart (blob) {
 
   /* ページ高さ（bbox.y1 の最大値） */
   const pageH = words.length
-      ? Math.max(...words.map(w => w.bbox?.y1 ?? 0))
-      : 1;
+    ? Math.max(...words.map(w => w.bbox?.y1 ?? 0))
+    : 1;
 
   /* 数字 2〜4 桁＋ yRate 一覧 */
   const allNums = words
     .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))
     .map(w => ({
-      num   : parseInt(
+      num : parseInt(
         w.text.replace(/[０-９]/g,
-          ch => String.fromCharCode(ch.charCodeAt(0) - 65248)), 10),
+          ch => String.fromCharCode(ch.charCodeAt(0)-65248)), 10),
       yRate : (w.bbox?.y0 ?? 0) / pageH
     }));
+  console.table(allNums);
 
-  console.table(allNums);                        // デバッグ
+  /* --- 総スタート候補：画面の下側 0.55〜0.95 にある 100〜5000 --- */
+  const cand = allNums
+    .filter(o => o.yRate >= 0.55 && o.yRate <= 0.95)
+    .filter(o => o.num   >= 100 && o.num   <= 5000);
 
-/* ---- yRate 0.70〜0.95 かつ 100〜5000 ---- */
-const candidates = allNums
-  .filter(o => o.yRate >= 0.70 && o.yRate <= 0.95)   // ←★変更
-  .filter(o => o.num  >= 100  && o.num  <= 5000);
+  console.log('CANDIDATES (0.55–0.95):', cand);
 
-  console.log('CANDIDATES (0–0.45):', candidates);
-
-  if (!candidates.length)
-    throw new Error('総スタートが読み取れませんでした');
-
-  return candidates.sort((a, b) => b.num - a.num)[0].num;
+  if (!cand.length) throw new Error('総スタートが読み取れませんでした');
+  return cand.sort((a,b)=>b.num-a.num)[0].num;   // 最大値
 }
 
-/* ---------- メイン ---------- */
-async function handleFiles (e) {
-  const [imgFile] = e.target.files;
-  if (!imgFile) return;
+/* --------------- ④ 赤線ポリライン抽出 --------------- */
+async function extractRedPolyline (bmp) {
+  await cvReady();                                // OpenCV 使用前に待つ
 
-  showPreview(imgFile);
-  document.getElementById('out').textContent = 'OCR 読み取り中…';
-
-  try {
-    const bmp = await createImageBitmap(imgFile);
-
-    /* ★ 赤線点列を取得してログへ */
-    const poly = await extractRedPolyline(bmp);
-    console.log('poly length=', poly.length, poly.slice(0,10));
-    
-    /* ★ 上 45 % をトリミングして OCR */
-    const cropH = Math.round(bmp.height * 0.45);
-    const cvs   = new OffscreenCanvas(bmp.width, cropH);
-    cvs.getContext('2d')
-       .drawImage(bmp,
-                  0, 0,                  // 画像切り出し開始 (上端)
-                  bmp.width, cropH,      // 幅・高さ
-                  0, 0,                  // Canvas 描画先
-                  bmp.width, cropH);
-
-    const totalStart = await extractTotalStart(await cvs.convertToBlob());
-
-    document.getElementById('out').textContent =
-      `総スタート：${totalStart.toLocaleString()} 回`;
-
-  } catch (err) {
-    document.getElementById('out').textContent = err.message;
-  }
-}
-
-/* ========= ★ 赤線抽出ユーティリティ ========= */
-/** ImageBitmap から赤線の (x,y) 配列を返す */
-async function extractRedPolyline(bmp){
-  const cvs = new OffscreenCanvas(bmp.width, bmp.height);
-  cvs.getContext('2d').drawImage(bmp, 0, 0);
-  const src = cv.imread(cvs);
+  /* Bitmap → <canvas> → Mat */
+  const canvas = document.createElement('canvas');
+  canvas.width  = bmp.width;
+  canvas.height = bmp.height;
+  canvas.getContext('2d').drawImage(bmp,0,0);
+  const src = cv.imread(canvas);
 
   cv.cvtColor(src, src, cv.COLOR_RGBA2RGB);
   cv.cvtColor(src, src, cv.COLOR_RGB2HSV);
@@ -119,8 +93,38 @@ async function extractRedPolyline(bmp){
       if(mask.ucharPtr(y,x)[0]){ pts.push({x,y}); break; }
     }
   }
-
-  /* 後片付け */
-  [src,low1,high1,low2,high2,m1,m2,mask].forEach(mat=>mat.delete());
+  [src,low1,high1,low2,high2,m1,m2,mask].forEach(m=>m.delete());
   return pts;
+}
+
+/* --------------- ⑤ メイン --------------- */
+async function handleFiles (e) {
+  const [imgFile] = e.target.files;
+  if (!imgFile) return;
+
+  showPreview(imgFile);
+  document.getElementById('out').textContent = 'OCR / 画像解析中…';
+
+  try {
+    /* Bitmap 化 */
+    const bmp = await createImageBitmap(imgFile);
+
+    /* 赤線点列を取得 */
+    const poly = await extractRedPolyline(bmp);
+    console.log('poly length =', poly.length, poly.slice(0,10));
+
+    /* 上 45 % をトリミングして OCR */
+    const cropH = Math.round(bmp.height * 0.45);
+    const cvs   = new OffscreenCanvas(bmp.width, cropH);
+    cvs.getContext('2d')
+       .drawImage(bmp, 0, 0, bmp.width, cropH, 0, 0, bmp.width, cropH);
+
+    const totalStart = await extractTotalStart(await cvs.convertToBlob());
+
+    document.getElementById('out').textContent =
+      `総スタート：${totalStart.toLocaleString()} 回（赤点 ${poly.length} 個）`;
+
+  } catch (err) {
+    document.getElementById('out').textContent = err.message;
+  }
 }
