@@ -53,15 +53,17 @@ async function extractTotalStart (blob) {
     }));
   console.table(allNums);
 
-  /* --- 総スタート候補：画面の下側 0.55〜0.95 にある 100〜5000 --- */
-  const cand = allNums
-    .filter(o => o.yRate >= 0.55 && o.yRate <= 0.95)
-    .filter(o => o.num   >= 100 && o.num   <= 5000);
+  /* ---- yRate 0.70〜0.95 かつ 100〜5000 ---- */
+const candidates = allNums
+  .filter(o => o.yRate >= 0.70 && o.yRate <= 0.95)   // ←★変更
+  .filter(o => o.num  >= 100  && o.num  <= 5000);
 
-  console.log('CANDIDATES (0.55–0.95):', cand);
+  console.log('CANDIDATES (0–0.45):', candidates);
 
-  if (!cand.length) throw new Error('総スタートが読み取れませんでした');
-  return cand.sort((a,b)=>b.num-a.num)[0].num;   // 最大値
+ if (!candidates.length)
+    throw new Error('総スタートが読み取れませんでした');
+
+  return candidates.sort((a, b) => b.num - a.num)[0].num;
 }
 
 /* --------------- ④ 赤線ポリライン抽出 --------------- */
