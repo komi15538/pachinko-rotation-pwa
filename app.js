@@ -1,4 +1,4 @@
-// app.js ── 総スタート抽出（画像 1 枚・下 45 % を OCR）
+// app.js ── 総スタート抽出（画像 1 枚・上 45 % を OCR）
 
 document.getElementById('files').addEventListener('change', handleFiles);
 
@@ -17,7 +17,7 @@ function showPreview (file) {
   rdr.readAsDataURL(file);
 }
 
-/* ---------- OCR ＆ 総スタート抽出 ---------- */
+/* ---------- OCR & 総スタート抽出 ---------- */
 async function extractTotalStart (blob) {
   const worker = await Tesseract.createWorker();
   await worker.load();
@@ -29,34 +29,33 @@ async function extractTotalStart (blob) {
 
   console.log('<<< OCR RAW TEXT >>>\n' + text);
 
-  /* ---- ページ高さ（bbox.y1 の最大値） ---- */
+  /* ページ高さ（bbox.y1 の最大値） */
   const pageH = words.length
       ? Math.max(...words.map(w => w.bbox?.y1 ?? 0))
       : 1;
 
-  /* ---- 数字 2〜4 桁と yRate を列挙 ---- */
+  /* 数字 2〜4 桁＋ yRate 一覧 */
   const allNums = words
     .filter(w => /^[0-9０-９]{2,4}$/.test(w.text))
     .map(w => ({
       num   : parseInt(
         w.text.replace(/[０-９]/g,
           ch => String.fromCharCode(ch.charCodeAt(0) - 65248)), 10),
-      yRate : (w.bbox?.y0 ?? 0) / pageH      // 0(top)〜1(bottom)
+      yRate : (w.bbox?.y0 ?? 0) / pageH
     }));
 
-  console.table(allNums);                     // デバッグ
+  console.table(allNums);                        // デバッグ
 
-  /* ---- yRate 0.55〜0.90 かつ 100〜5000 ---- */
+  /* yRate 0〜0.45 & 100〜5000 */
   const candidates = allNums
-    .filter(o => o.yRate >= 0.55 && o.yRate <= 0.90)
-    .filter(o => o.num  >= 100  && o.num  <= 5000);
+    .filter(o => o.yRate <= 0.45)
+    .filter(o => o.num  >= 100 && o.num  <= 5000);
 
-  console.log('CANDIDATES (0.55–0.90):', candidates);
+  console.log('CANDIDATES (0–0.45):', candidates);
 
   if (!candidates.length)
     throw new Error('総スタートが読み取れませんでした');
 
-  /* 最大値を採用（例: 2375 > 529 > 21） */
   return candidates.sort((a, b) => b.num - a.num)[0].num;
 }
 
@@ -71,15 +70,14 @@ async function handleFiles (e) {
   try {
     const bmp = await createImageBitmap(imgFile);
 
-    /* ★ 下 45 % だけをトリミングして OCR コストを減らす */
-    const offsetY = Math.round(bmp.height * 0.55);   // 開始位置
-    const cropH   = bmp.height - offsetY;            // 高さ＝下 45 %
-    const cvs     = new OffscreenCanvas(bmp.width, cropH);
+    /* ★ 上 45 % をトリミングして OCR */
+    const cropH = Math.round(bmp.height * 0.45);
+    const cvs   = new OffscreenCanvas(bmp.width, cropH);
     cvs.getContext('2d')
        .drawImage(bmp,
-                  0, offsetY,              // 画像の切り出し開始 Y
-                  bmp.width, cropH,        // 幅・高さ
-                  0, 0,                    // Canvas 描画先 (0,0)
+                  0, 0,                  // 画像切り出し開始 (上端)
+                  bmp.width, cropH,      // 幅・高さ
+                  0, 0,                  // Canvas 描画先
                   bmp.width, cropH);
 
     const totalStart = await extractTotalStart(await cvs.convertToBlob());
