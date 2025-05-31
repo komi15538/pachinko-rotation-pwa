@@ -3,8 +3,14 @@
 /* --------------- ① OpenCV が初期化されるのを待つ --------------- */
 function cvReady () {
   return new Promise(res => {
-    if (window.cv && cv.imread) return res();          // 既に OK
-    cv.onRuntimeInitialized = () => res();             // 読み込み後に実行
+    if (window.cv && cv.imread) {
+      console.log('✅ OpenCV is ready');
+      return res();
+    }
+    cv['onRuntimeInitialized'] = () => {
+      console.log('✅ OpenCV is ready');
+      res();
+    };
   });
 }
 
