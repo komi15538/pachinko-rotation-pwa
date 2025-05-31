@@ -46,11 +46,11 @@ async function extractTotalStart (blob) {
 
   console.table(allNums);                        // デバッグ
 
-  /* yRate 0〜0.45 & 100〜5000 */
-  const candidates = allNums
-    .filter(o => o.yRate <= 0.45)
-    .filter(o => o.num  >= 100 && o.num  <= 5000);
-
+/* ---- yRate 0.70〜0.95 かつ 100〜5000 ---- */
+const candidates = allNums
+  .filter(o => o.yRate >= 0.70 && o.yRate <= 0.95)   // ←★変更
+  .filter(o => o.num  >= 100  && o.num  <= 5000);
+  
   console.log('CANDIDATES (0–0.45):', candidates);
 
   if (!candidates.length)
